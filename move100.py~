@@ -1,0 +1,72 @@
+#!/usr/bin/env python
+
+import easygopigo3 as easy
+import time
+import threading
+import sys
+
+gpg = easy.EasyGoPiGo3()
+servo = gpg.init_servo()
+
+
+def lights_go():
+	for i in range (30):
+		gpg.blinker_on(0)
+		time.sleep(.1)
+		gpg.blinker_off(0)
+		gpg.blinker_on(1)
+		time.sleep(.1)
+		gpg.blinker_off(1)
+
+def eyes_go_on():
+    for i in range(10):
+        print (i)
+        gpg.set_eye_color((255,0,0))
+        gpg.open_eyes()
+        time.sleep(.1)
+        gpg.set_eye_color((0,255,0))
+        gpg.open_eyes()
+        time.sleep(.1)
+        gpg.set_eye_color((0,0,255))
+        gpg.open_eyes()
+        time.sleep(.1)
+        
+
+print ('''Enter a command:
+	  w, a ,x, d, and s for stop. 
+	  e, r, t for servo, and 
+	  f for blinkers
+	  g colored lights
+	  z to quit:''')
+
+while True:
+	direct = raw_input('>>')
+	if direct == 'w':
+		gpg.forward()
+	elif direct =='x':
+		gpg.backward()
+	elif direct == 'a':
+		gpg.left()
+	elif direct == 'd':
+		gpg.right()
+	elif direct == 's':
+		gpg.stop()
+	elif direct == 't':
+		servo.rotate_servo(10)
+	elif direct == 'r':
+		servo.rotate_servo(96)
+	elif direct == 'e':
+		servo.rotate_servo(160)
+	elif direct == 'f':
+		t1 = threading.Thread(target=lights_go,)
+		t1.daemon = True
+		t1.start()
+	elif direct == 'g':
+                t2 = threading.Thread(target=eyes_go_on,)
+                t2.daemon = True
+                t2.start()
+	elif direct == 'z':
+                gpg.close_eyes()
+                gpg.blinker_off(0)
+                gpg.blinker_off(1)
+                sys.exit()		

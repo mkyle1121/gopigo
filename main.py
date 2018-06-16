@@ -1,0 +1,270 @@
+#!/usr/bin/env python
+
+import easygopigo3 as easy
+import time
+import threading
+import sys
+from picamera.array import PiRGBArray
+from picamera import PiCamera
+import cv2
+import os
+import pygame
+import boto3
+import pymysql.cursors
+import di_sensors.inertial_measurement_unit as imu
+
+gpg = easy.EasyGoPiGo3()
+sqlconn = pymysql.connect(host='localhost',user='root',password='root',db='robot')
+servo = gpg.init_servo(port='SERVO1')
+servo2 = gpg.init_servo(port='SERVO2')
+distance_sensor = gpg.init_distance_sensor()
+white_led = gpg.init_led('AD1')
+imu_sensor = imu.InertialMeasurementUnit()
+pygame.mixer.init()
+polly = boto3.client('polly')
+rek = boto3.client('rekognition')
+rek_image_file = 'rek_pic.jpg'
+sound_dir = '/home/pi/aaa_mikes_gopigo/gopigo/sounds/'
+speed = 300
+white_led_status = 'off'
+
+# initialize the camera and grab a reference to the raw camera capture
+camera = PiCamera()
+camera.resolution = (368,240)
+camera.framerate = 32
+rawCapture = PiRGBArray(camera, size=(368,240))
+
+def servo_go(num):
+	servo.rotate_servo(num)
+	time.sleep(.1)
+	servo2.rotate_servo(num)
+
+def lights_go():
+	for i in range (30):
+		gpg.blinker_on(0)
+		time.sleep(.1)
+		gpg.blinker_off(0)
+		gpg.blinker_on(1)
+		time.sleep(.1)
+		gpg.blinker_off(1)
+
+def eyes_go_on():
+    for i in range(10):
+        gpg.set_eye_color((255,0,0))
+        gpg.open_eyes()
+        time.sleep(.1)
+        gpg.set_eye_color((0,255,0))
+        gpg.open_eyes()
+        time.sleep(.1)
+        gpg.set_eye_color((0,0,255))
+        gpg.open_eyes()
+        time.sleep(.1)
+        gpg.close_eyes()
+        
+def video_go():
+	# capture frames from the camera
+	for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
+	# grab the raw NumPy array representing the image, then initialize the timestamp
+	# and occupied/unoccupied text
+		image = frame.array 
+	# show the frame
+		cv2.imshow("Frame", image)
+		key = cv2.waitKey(1) & 0xFF
+ 	# clear the stream in preparation for the next frame
+		rawCapture.truncate(0)
+ 	# if the `q` key was pressed, break from the loop
+		if key == ord("q"):
+			break
+			
+def sound_menu_go():
+	sounds = (os.listdir(sound_dir))
+	for num, sound in zip(range(len(sounds)),sounds): # load 2 variables for len of sounds
+		print (str(num)+' '+sound)
+	try:
+		choice = input('Pick a number: ')
+		pygame.mixer.music.load(sound_dir+sounds[choice]) # load the sound from sounds index		
+	except:
+		print ('Not a valid choice, exiting.')
+	else:
+		pygame.mixer.music.play()
+		
+def set_speed_go():
+	speed = input('Set speed between 0 - 1000: ')
+	gpg.set_speed(speed)
+	
+def speak_go():
+	while True:
+		print('"exit" to return')
+		speech = raw_input('Enter text-to-speak: ')
+		if speech == 'exit':
+			break
+		response = polly.synthesize_speech(Text=speech, OutputFormat='mp3', VoiceId='Justin')
+		with open('output.mp3', 'wb') as stream:
+			stream.write(response['AudioStream'].read()) # read stream and write to file at same time
+			stream.close()
+		pygame.mixer.music.load('output.mp3')
+		pygame.mixer.music.play()
+		while pygame.mixer.music.get_busy() == True:
+			pass
+		sql_go('text-to-speech!')
+			
+def distance_go():
+	distance = distance_sensor.read_inches()
+	print (str(distance)+' inches away.')	
+	
+def sql_go(sql_comm=None):
+	with sqlconn.cursor() as cursor:
+		sql = "INSERT INTO move VALUES (%s, %s)"
+		cursor.execute(sql, (None, sql_comm))
+		sqlconn.commit()		
+		#sqlresult = cursor.fetchone()
+		#print(sqlresult)	
+
+def white_led_go():
+	global white_led_status
+	if white_led_status == 'off':
+		white_led.light_max()
+		white_led_status = 'on'
+	elif white_led_status == 'on':
+		white_led.light_off()
+		white_led_status = 'off'
+
+def rek_go():
+	pass
+
+def sound_go(play_file):
+	pygame.mixer.music.load(play_file)
+	pygame.mixer.music.play()
+
+def eyes_intro(): # flash the eyes once
+	gpg.set_eye_color((255,0,0))
+	gpg.open_eyes()
+	time.sleep(.1)
+	gpg.set_eye_color((0,255,0))
+	gpg.open_eyes()
+	time.sleep(.1)
+	gpg.set_eye_color((0,0,255))
+	gpg.open_eyes()
+	time.sleep(.1)
+	gpg.close_eyes()
+
+def led_intro():
+	for i in range(10):
+		white_led.light_max()
+		time.sleep(.025)
+		white_led.light_off()
+		time.sleep(.025)
+
+def main_menu_go():
+	print ('''Enter a command:
+	  "menu" for command list
+	  "exit" to quit
+	  w, a ,x, d, for direction
+	  s for stop
+	  e, r, t for servo 
+	  f for blinkers
+	  g for colored lights
+	  v for video
+	  q to quit video
+	  l for sound list
+	  k for voltage
+	  j for set speed
+	  p for text-to-speech
+	  o for distance reading
+	  h for white led
+	  z to quit:''')
+	  
+if __name__ == '__main__':
+	
+	print ('Booting!')
+	sound_go('sounds/Robot_Boot.mp3')
+	time.sleep(1)
+	servo_go(140)
+	time.sleep(.5)
+	servo_go(70)
+	time.sleep(.5)
+	servo_go(96)
+	gpg.forward()
+	time.sleep(.5)
+	gpg.backward()
+	time.sleep(.5)
+	gpg.stop()
+	time.sleep(.2) # to line up sound heh	
+	eyes_intro()
+	led_intro()
+	print ('Done Booting!')
+
+
+
+
+	main_menu_go()
+	sql_go('robot started')
+
+	while True:
+		direct = raw_input('>> ')
+		if direct == 'menu':
+			main_menu_go()
+		elif direct == 'w':
+			gpg.forward()
+			sql_go('forward')
+		elif direct =='x':
+			gpg.backward()
+			sql_go('backward')
+		elif direct == 'a':
+			gpg.left()
+			sql_go('left')
+		elif direct == 'd':
+			gpg.right()
+			sql_go('right')
+		elif direct == 's':
+			gpg.stop()
+			sql_go('stop')
+		elif direct == 't':
+			servo_go(60)
+			sql_go('servo right')
+		elif direct == 'r':
+			servo_go(96)
+			sql_go('servo center')
+		elif direct == 'e':
+			servo_go(140)
+			sql_go('servo left')
+		elif direct == 'f':
+			t1 = threading.Thread(target=lights_go,)
+			t1.daemon = True
+			t1.start()
+			sql_go('blinkers on')
+		elif direct == 'g':
+			t2 = threading.Thread(target=eyes_go_on,)
+			t2.daemon = True
+			t2.start()
+			sql_go('lights on')
+		elif direct == 'v':
+			t3 = threading.Thread(target=video_go,)
+			t3.daemon = True
+			t3.start()
+			sql_go('video started')
+		elif direct == 'l':
+			sound_menu_go()
+			sql_go('audio output!')
+		elif direct == 'k':
+			print ('Voltage: ')+str(gpg.volt())
+			sql_go('voltage read')
+		elif direct == 'j':
+			set_speed_go()
+			sql_go('speed set')
+		elif direct == 'p':
+			speak_go()
+			sql_go('text-to-speech!')
+		elif direct == 'o':
+			distance_go()
+			sql_go('distance read')
+		elif direct == 'h':
+			white_led_go()
+			sql_go('white led')
+		elif direct == 'z' or direct == 'exit':
+			gpg.close_eyes()
+			gpg.blinker_off(0)
+			gpg.blinker_off(1)
+			sql_go('robot shutdown')
+			sqlconn.close()
+			sys.exit()
